@@ -1,4 +1,5 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
+import { nanoid } from 'nanoid';
 
 const listingsSubSchema = new mongoose.Schema({
    listingId: {
@@ -42,12 +43,17 @@ const userSchemaWithListings = mongoose.Schema({
         required: true,
         unique: true,
     },
+    password: {
+        type: String,
+        required: true,
+    },
     listings: {
         type: [listingsSubSchema],
         required: true,
         unique: true,
+        default: [],
     },
 });
 
-var userWithListingsData = mongoose.model('userModel', userSchemaWithListings);
-module.exports = userWithListingsData;
+var User = mongoose.model('User', userSchemaWithListings);
+export default User;
