@@ -1,16 +1,52 @@
 const express = require('express');
-const app = express();
+const bcrypt = require('bcrypt');
+const User = require('./User'); // Your user model
 
-const PORT = 3000; // You can change this port number if needed
+const router = express.Router();
 
-// Define a simple route
-app.get('/', (req, res) => {
-  res.send('Hello, World!');
+
+// Registration route (POST) - handle user registration
+router.post('/register', async (req, res) => {
+    const { username } = req.body; // Only the username for now
+
+    try {
+        // Check if the username already exists
+        const existingUser = await User.findOne({ username });
+        if (existingUser) {
+            return res.status(400).send('Username already taken');
+        }
+
+        // Create a new user without password field for now
+        const newUser = new User({ username });
+        await newUser.save();
+
+        // Return a success message
+        res.send('Registration successful!');
+    } catch (err) {
+        console.error('Registration error:', err);
+        res.status(500).send('Error during registration');
+    }
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+
+// Login route (POST) - handle login
+router.post('/login', async (req, res) => {
+    const { username } = req.body; // Only username for now
+
+    try {
+        // Find the user by username
+        const user = await User.findOne({ username });
+        if (!user) {
+            return res.status(400).send('Invalid username');
+        }
+
+        // Login successful, return a message
+        res.send('Login successful!');
+    } catch (err) {
+        console.error('Login error:', err);
+        res.status(500).send('Error during login');
+    }
 });
 
-
+// Export routes
+module.exports = router;
