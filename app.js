@@ -1,8 +1,47 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
+const cron = require('node-cron');
 const User = require('./User'); // Your user model
 
 const router = express.Router();
+
+// Schedule to run every minute
+cron.schedule('* * * * *', async () => {
+    console.log("Checking for expired listings");
+
+    try {
+        // Find all users with listings that have expired and are not yet sold
+        const usersWithExpiredListings = await User.find({
+            "listings.expiryDate": { $lte: new Date() }, 
+            "listings.sold": false                       
+        });
+
+        for (const user of usersWithExpiredListings) {
+            for (const listing of user.listings) {
+                if (listing.expiryDate <= new Date() && !listing.sold) {
+                    // If there are bids, sell to the highest bidder
+                    if (listing.bids.length > 0) {
+                        const highestBid = listing.bids.reduce((max, bid) => bid.bidValue > max.bidValue ? bid : max, listing.bids[0]);
+                        listing.sold = true;
+                        listing.soldTo = highestBid.username;
+                        listing.soldPrice = highestBid.bidValue;
+                        listing.status = 'Sold';
+                        console.log(`Sold listing ${listing._id} to ${highestBid.username} for ${highestBid.bidValue}`);
+                    } else {
+                        // Mark the listing as expired with no bids
+                        listing.sold = true;
+                        listing.status = 'Expired';
+                        console.log(`Listing ${listing._id} expired with no bids`);
+                    }
+                }
+            }
+            // Save the user with updated listings
+            await user.save();
+        }
+    } catch (err) {
+        console.error("Error processing expired listings:", err);
+    }
+});
 
 // Registration route (POST) - handle user registration
 router.post('/register', async (req, res) => {
@@ -73,7 +112,7 @@ router.post('/new-listing', upload.single('image'), async (req, res) => {
 
     console.log("Request Body:", req.body);
     console.log("Uploaded File:", req.file);
-    const { title, description, minBidValue, username } = req.body;
+    const { title, description, minBidValue, username, timerMinutes } = req.body;
     const image = req.file;
 
     if (!title || !description || !minBidValue || !username || !image) {
@@ -87,12 +126,24 @@ router.post('/new-listing', upload.single('image'), async (req, res) => {
             return res.status(404).send('User not found');
         }
 
-        // Create a new listing
+        // Calculate expiry date based on timer in minutes
+        const expiryDate = new Date(Date.now() + timerMinutes * 60 * 1000);
+        console.log("Timer is " + timerMinutes);
+        console.log("Expiry is " + expiryDate);
+
+        // Ensure expiryDate was calculated correctly
+        if (!expiryDate || isNaN(expiryDate.getTime())) {
+            return res.status(400).send('Invalid expiry date');
+        }
+
+        // Create a new listing with expiryDate included
         const newListing = {
             title,
             description,
             minBidValue: parseFloat(minBidValue),
-            image: image.path // Store the image path
+            image: image.path,
+            expiryDate: expiryDate, // Include expiryDate here
+            bids: []
         };
 
         // Add the listing to the user's profile and save
@@ -100,7 +151,7 @@ router.post('/new-listing', upload.single('image'), async (req, res) => {
         await user.save();
 
         res.status(201).json({
-            message: 'Listing created successfully',
+            message: 'Listing created successfully with expiry time in minutes',
             data: newListing
         });
     } catch (err) {
@@ -303,6 +354,42 @@ router.post('/sell-item', async (req, res) => {
     }
 });
 
+
+// Allows the seller to relist an expired item
+router.post('/relist', async (req, res) => {
+    const { username, listingId, timerMinutes } = req.body;
+
+    if (!username || !listingId || !timerMinutes) {
+        return res.status(400).send('Username, listingId, and timerMinutes are required');
+    }
+
+    try {
+        const user = await User.findOne({ username });
+        if (!user) {
+            return res.status(404).send('User not found');
+        }
+
+        const listing = user.listings.id(listingId);
+        if (!listing || listing.status !== 'Expired') {
+            return res.status(400).send('Listing is not expired or not found');
+        }
+
+        // Reset expiry date based on new timer duration and mark as active
+        listing.expiryDate = new Date(Date.now() + timerMinutes * 60 * 1000); // New expiry time
+        listing.status = 'Active';
+        listing.sold = false;
+        listing.timesRelisted = (listing.timesRelisted || 0) + 1; // track number of times relisted
+
+        await user.save();
+        res.status(200).json({
+            message: 'Listing relisted successfully',
+            listing: listing
+        });
+    } catch (err) {
+        console.error('Error relisting item:', err);
+        res.status(500).send('Error relisting item');
+    }
+});
 
 // Export routes
 module.exports = router;

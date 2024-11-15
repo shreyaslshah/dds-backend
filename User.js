@@ -17,7 +17,10 @@ const listingSchema = new mongoose.Schema({
     minBidValue: { type: Number, required: true },
     sold: { type: Boolean, default: false },       // to indicate if the item is sold
     soldTo: { type: String, default: null },        // Username of the buyer
-    soldPrice: { type: Number, default: null }      // Final sale price
+    soldPrice: { type: Number, default: null }, // Final sale price
+    expiryDate: { type: Date},  // Date listing will expire     
+    status: { type: String, default: 'Active' },  // can either be 'Active', 'Sold', or 'Expired'
+    timesRelisted: { type: Number, default: 0 } 
 });
 
 // Define the user schema with password field
