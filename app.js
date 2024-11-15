@@ -289,10 +289,8 @@ router.post('/sell-item', async (req, res) => {
         listing.soldTo = highestBid.username; // Add `soldTo` field to record the buyer's username
         listing.soldPrice = highestBid.bidValue; // Record the final selling price
 
-        // Save the updated seller document
         await seller.save();
 
-        // Step 6: Return a success message with sale details
         res.status(200).json({
             message: 'Item sold successfully',
             listingId: listingId,
