@@ -1,13 +1,23 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 
+
+
 // Define the listing schema
 const listingSchema = new mongoose.Schema({
     image: { type: String, required: true },  // Store Base64 encoded image data
     title: { type: String, required: true },
     description: { type: String, required: true },
-    bids: { type: [Number], default: [] }, // Array of bid values (integers)
-    minBidValue: { type: Number, required: true }
+    bids: [
+        {
+            bidValue: { type: Number, required: true },
+            username: { type: String, required: true }
+        }
+    ], // Array of bid objects
+    minBidValue: { type: Number, required: true },
+    sold: { type: Boolean, default: false },       // to indicate if the item is sold
+    soldTo: { type: String, default: null },        // Username of the buyer
+    soldPrice: { type: Number, default: null }      // Final sale price
 });
 
 // Define the user schema with password field

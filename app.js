@@ -70,6 +70,9 @@ const upload = multer({ storage: storage });
 
 // Route to post a new listing
 router.post('/new-listing', upload.single('image'), async (req, res) => {
+
+    console.log("Request Body:", req.body);
+    console.log("Uploaded File:", req.file);
     const { title, description, minBidValue, username } = req.body;
     const image = req.file;
 
@@ -204,8 +207,15 @@ router.post('/post-bid', async (req, res) => {
             return res.status(404).send('User not found');
         }
 
-        // Find the listing by its listingId (using _id)
-        const listing = user.listings.find(listing => listing._id.toString() === listingId);
+        // Find listing across ALL USERS using listingID
+        const userWithListing = await User.findOne({ 'listings._id': listingId });
+
+        if (!userWithListing) {
+            return res.status(404).send('Listing not found');
+        }
+
+        // Locate the specific listing within that user's listings array
+        const listing = userWithListing.listings.id(listingId);
 
         // If no listing is found, return an error
         if (!listing) {
@@ -217,17 +227,81 @@ router.post('/post-bid', async (req, res) => {
             return res.status(400).send(`Bid value must be greater than the minimum bid value of ${listing.minBidValue}`);
         }
 
-        // Add the bid to the bids array of the listing
-        listing.bids.push(bidValue);
+        // Manually construct the bid as a plain object without Mongoose's _id generation
+        const newBid = {
+            bidValue: Number(bidValue),
+            username: String(username)
+        };
+
+        console.log("New bid constructed as plain object:", newBid);
+
+        // Add the bid to the listing's bids array
+        listing.bids.push(newBid);
+
+        // Run validation synchronously to catch errors before saving
+        const validationError = userWithListing.validateSync();
+        if (validationError) {
+            console.error('Validation Error:', validationError);
+            return res.status(400).send(`Validation Error: ${validationError.message}`);
+        }
 
         // Save the updated user document
-        await user.save();
+        await userWithListing.save();
 
         // Send a success message
         res.send('Bid placed successfully');
     } catch (err) {
         console.error('Error placing bid:', err);
         res.status(500).send('Error placing bid');
+    }
+});
+
+router.post('/sell-item', async (req, res) => {
+    const { sellerUsername, listingId } = req.body;
+
+    if (!sellerUsername || !listingId) {
+        return res.status(400).send('Seller username and listingId are required');
+    }
+
+    try {
+        // Verify that the seller exists
+        const seller = await User.findOne({ username: sellerUsername });
+        if (!seller) {
+            return res.status(404).send('Seller not found');
+        }
+
+        // Find listing under the seller's listings
+        const listing = seller.listings.id(listingId);
+        if (!listing) {
+            return res.status(404).send('Listing not found for this seller');
+        }
+
+        // Check if there are bids on the listing
+        if (listing.bids.length === 0) {
+            return res.status(400).send('No bids available for this listing');
+        }
+
+        // find the highest bid
+        const highestBid = listing.bids.reduce((max, bid) => (bid.bidValue > max.bidValue ? bid : max), listing.bids[0]);
+
+        // Complete sale transaction
+        listing.sold = true; // Add a `sold` flag to indicate the item has been sold
+        listing.soldTo = highestBid.username; // Add `soldTo` field to record the buyer's username
+        listing.soldPrice = highestBid.bidValue; // Record the final selling price
+
+        // Save the updated seller document
+        await seller.save();
+
+        // Step 6: Return a success message with sale details
+        res.status(200).json({
+            message: 'Item sold successfully',
+            listingId: listingId,
+            soldTo: highestBid.username,
+            soldPrice: highestBid.bidValue
+        });
+    } catch (err) {
+        console.error('Error selling item:', err);
+        res.status(500).send('Error selling item');
     }
 });
 
