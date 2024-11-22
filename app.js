@@ -1,10 +1,10 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
-const User = require('./User'); // Your user model
+const User = require('./User');
 
 const router = express.Router();
 
-// Registration route (POST) - handle user registration
+// Registration route - handle user registration
 router.post('/register', async (req, res) => {
     const { username, password } = req.body;
 
@@ -19,7 +19,6 @@ router.post('/register', async (req, res) => {
         const newUser = new User({ username, password });
         await newUser.save();
 
-        // Return a success message
         res.send('Registration successful!');
     } catch (err) {
         console.error('Registration error:', err);
@@ -27,7 +26,7 @@ router.post('/register', async (req, res) => {
     }
 });
 
-// Login route (POST) - handle login
+// Login route - handle login
 router.post('/login', async (req, res) => {
     const { username, password } = req.body;
 
@@ -44,70 +43,52 @@ router.post('/login', async (req, res) => {
             return res.status(400).send('Invalid password');
         }
 
-        // Login successful
-        res.send('Login successful!');
+        res.status(200).json(user);
     } catch (err) {
         console.error('Login error:', err);
         res.status(500).send('Error during login');
     }
 });
 
-const multer = require('multer');
-const path = require('path');
-
-//Below code for posting a new listing
-// Configure multer for image upload
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'uploads/'); // Make sure this directory exists
-    },
-    filename: function (req, file, cb) {
-        cb(null, Date.now() + path.extname(file.originalname)); // Unique filename
-    }
-});
-
-const upload = multer({ storage: storage });
-
 // Route to post a new listing
-router.post('/new-listing', upload.single('image'), async (req, res) => {
+router.post('/new-listing', async (req, res) => {
+    const { title, description, minBidValue, username, imageBase64 } = req.body;
 
-    console.log("Request Body:", req.body);
-    console.log("Uploaded File:", req.file);
-    const { title, description, minBidValue, username } = req.body;
-    const image = req.file;
-
-    if (!title || !description || !minBidValue || !username || !image) {
-        return res.status(400).send('All fields are required');
+    // Validate input
+    if (!title || !description || !minBidValue || !username || !imageBase64) {
+        return res.status(400).json({ message: 'All fields are required' });
     }
 
     try {
         // Find the user by username
         const user = await User.findOne({ username });
         if (!user) {
-            return res.status(404).send('User not found');
+            return res.status(404).json({ message: 'User not found' });
         }
 
         // Create a new listing
         const newListing = {
             title,
             description,
-            minBidValue: parseFloat(minBidValue),
-            image: image.path // Store the image path
+            minBidValue: parseInt(minBidValue),
+            image: imageBase64, // Store Base64 string directly
         };
 
         // Add the listing to the user's profile and save
         user.listings.push(newListing);
         await user.save();
 
-        res.status(201).json({
-            message: 'Listing created successfully',
-            data: newListing
-        });
+        // Retrieve the newly created listing (last element of the listings array)
+        const createdListing = user.listings[user.listings.length - 1];
+
+        res.status(200).json(createdListing);
     } catch (err) {
         console.error('Error creating listing:', err);
-        res.status(500).send('Error creating listing');
+        res.status(500).json({ message: 'Error creating listing' });
     }
 });
+
+
 
 // Route to get all listings from all users
 router.get('/all-listings', async (req, res) => {
@@ -130,7 +111,7 @@ router.get('/all-listings', async (req, res) => {
 
 // Route to get all listings for a specific user based on their username
 router.get('/my-listings', async (req, res) => {
-    const { username } = req.query;  // Get username from query parameters
+    const { username } = req.body;  // Get username from the body instead of query parameters
 
     if (!username) {
         return res.status(400).send('Username is required');
@@ -199,15 +180,7 @@ router.post('/post-bid', async (req, res) => {
     }
 
     try {
-        // Find the user by their username
-        const user = await User.findOne({ username });
-
-        // If no user is found, return an error
-        if (!user) {
-            return res.status(404).send('User not found');
-        }
-
-        // Find listing across ALL USERS using listingID
+        // Find the user who owns the listing
         const userWithListing = await User.findOne({ 'listings._id': listingId });
 
         if (!userWithListing) {
@@ -220,6 +193,11 @@ router.post('/post-bid', async (req, res) => {
         // If no listing is found, return an error
         if (!listing) {
             return res.status(404).send('Listing not found');
+        }
+
+        // Check if the user attempting to bid is the owner of the listing
+        if (userWithListing.username === username) {
+            return res.status(403).send('You cannot bid on your own listing');
         }
 
         // Ensure the bidValue is greater than the minimum bid value
@@ -303,6 +281,54 @@ router.post('/sell-item', async (req, res) => {
     }
 });
 
+// Route to get all items bought by a specific user
+router.get('/bought-by-me', async (req, res) => {
+    const { username } = req.body; // Extract username from the request body
 
+    if (!username) {
+        return res.status(400).send('Username is required');
+    }
+
+    try {
+        // Find all users with listings
+        const users = await User.find();
+
+        // Extract listings where the soldTo field matches the username
+        const boughtListings = users.flatMap(user => 
+            user.listings.filter(listing => listing.soldTo === username)
+        );
+
+        res.status(200).json(boughtListings);
+    } catch (err) {
+        console.error('Error retrieving bought items:', err);
+        res.status(500).send('Error retrieving bought items');
+    }
+});
+
+// Route to get all items sold by a specific user
+router.get('/sold-by-me', async (req, res) => {
+    const { username } = req.body; // Extract username from the request body
+
+    if (!username) {
+        return res.status(400).send('Username is required');
+    }
+
+    try {
+        // Find the user by username
+        const user = await User.findOne({ username });
+
+        if (!user) {
+            return res.status(404).send('User not found');
+        }
+
+        // Extract listings where the sold flag is true
+        const soldListings = user.listings.filter(listing => listing.sold);
+
+        res.status(200).json(soldListings);
+    } catch (err) {
+        console.error('Error retrieving sold items:', err);
+        res.status(500).send('Error retrieving sold items');
+    }
+});
 // Export routes
 module.exports = router;
