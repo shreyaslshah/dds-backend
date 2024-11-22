@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const app = express();
 
-// MongoDB connection string (replace with your actual MongoDB connection URI)
+// MongoDB connection string
 const mongoURI = 'mongodb+srv://shreyaslshah:shreyasshah@cluster0.ya2to.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
 // Connect to MongoDB using Mongoose
@@ -27,7 +27,7 @@ const routes = require('./app');
 app.use('/', routes);
 
 // Start the server
-const PORT = 3000; // You can change this port number if needed
+const PORT = 3000; 
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
