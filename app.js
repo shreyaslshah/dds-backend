@@ -134,6 +134,7 @@ router.get('/my-listings', async (req, res) => {
   }
 });
 
+// Route to delete a listing
 router.delete('/delete-listing', async (req, res) => {
   const { username, listingId } = req.body;  // Get username and listingId from the request body
 
@@ -172,6 +173,7 @@ router.delete('/delete-listing', async (req, res) => {
   }
 });
 
+//Route to post a bid
 router.post('/post-bid', async (req, res) => {
   const { username, listingId, bidValue } = req.body;  // Get username, listingId, and bidValue from the request body
 
@@ -200,9 +202,22 @@ router.post('/post-bid', async (req, res) => {
       return res.status(403).send('You cannot bid on your own listing');
     }
 
-    // Ensure the bidValue is greater than the minimum bid value
-    if (bidValue <= listing.minBidValue) {
-      return res.status(400).send(`Bid value must be greater than the minimum bid value of ${listing.minBidValue}`);
+    // Check if the bid is greater than the minBidValue if it's the first bid
+    if (listing.bids.length === 0) {
+      // If this is the first bid, it must be greater than the minimum bid value
+      if (bidValue <= listing.minBidValue) {
+        return res.status(400).send(`First bid must be greater than the minimum bid value of ${listing.minBidValue}`);
+      }
+    } else {
+    // Otherwise ensure the bid is greater than the current highest bid
+    const highestBid = listing.bids.reduce((maxBid, currentBid) => {
+      return currentBid.bidValue > maxBid.bidValue ? currentBid : maxBid;
+    }, { bidValue: 0 });
+
+    // Ensure the new bid is greater than the current highest bid
+    if (bidValue <= highestBid.bidValue) {
+      return res.status(400).send(`Bid value must be higher than the current highest bid of ${highestBid.bidValue}`);
+    }
     }
 
     // Manually construct the bid as a plain object without Mongoose's _id generation
