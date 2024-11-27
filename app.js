@@ -205,7 +205,7 @@ router.post('/post-bid', async (req, res) => {
     // Check if the bid is greater than the minBidValue if it's the first bid
     if (listing.bids.length === 0) {
       // If this is the first bid, it must be greater than the minimum bid value
-      if (bidValue <= listing.minBidValue) {
+      if (bidValue < listing.minBidValue) {
         return res.status(400).send(`First bid must be greater than the minimum bid value of ${listing.minBidValue}`);
       }
     } else {
@@ -225,8 +225,6 @@ router.post('/post-bid', async (req, res) => {
       bidValue: Number(bidValue),
       username: String(username)
     };
-
-    console.log("New bid constructed as plain object:", newBid);
 
     // Add the bid to the listing's bids array
     listing.bids.push(newBid);
